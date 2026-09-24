@@ -12,8 +12,9 @@ from rich.table import Table
 from redteam.adapters.http_adapter import HTTPTargetAdapter
 from redteam.engine import run_corpus
 from redteam.mutators import generate_mutations
-from redteam.schema import Attack
-from redteam.scoring import score_run
+from redteam.report import render_html, render_markdown
+from redteam.schema import Attack, RunResult
+from redteam.scoring import RiskReport, score_run
 
 app = typer.Typer(help="Automated red-teaming harness for GenAI applications.")
 console = Console()
@@ -206,6 +207,52 @@ def mutate(
     payload = {"attacks": [attack.model_dump(mode="json") for attack in mutated]}
     out.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
     console.print(f"Wrote {len(mutated)} mutated attacks (from {len(seeds)} seeds) to {out}")
+
+
+def _find_latest_run() -> Optional[Path]:
+    if not RUNS_DIR.exists():
+        return None
+    candidates = sorted(RUNS_DIR.glob("*.json"))
+    return candidates[-1] if candidates else None
+
+
+@app.command()
+def report(
+    run_file: Optional[Path] = typer.Argument(
+        None,
+        help="Path to a saved run JSON from `redteam run` (data/runs/*.json). "
+        "Defaults to the most recent one.",
+    ),
+    out: Optional[Path] = typer.Option(
+        None, help="Output path. Defaults to the run file's name with .html/.md."
+    ),
+    fmt: str = typer.Option("html", help="Output format: html or md."),
+) -> None:
+    """Render a saved run into a shareable HTML or Markdown report."""
+    path = run_file or _find_latest_run()
+    if path is None or not path.exists():
+        console.print(
+            "No run file found. Run `redteam run` first, or pass a path explicitly."
+        )
+        raise typer.Exit(code=1)
+
+    raw = json.loads(path.read_text())
+    result = RunResult.model_validate(raw["result"])
+    risk_report = RiskReport.model_validate(raw["risk_report"])
+
+    if fmt == "html":
+        content = render_html(result, risk_report)
+        default_suffix = ".html"
+    elif fmt == "md":
+        content = render_markdown(result, risk_report)
+        default_suffix = ".md"
+    else:
+        console.print(f"Unknown format {fmt!r} — use 'html' or 'md'.")
+        raise typer.Exit(code=1)
+
+    out_path = out or path.with_suffix(default_suffix)
+    out_path.write_text(content)
+    console.print(f"Wrote report to {out_path}")
 
 
 if __name__ == "__main__":

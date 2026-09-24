@@ -23,7 +23,10 @@ Phased build — see below for what's done vs. planned.
 - [x] **Phase 5** — LLM-as-judge fallback (`redteam/llm_judge.py`) for attacks
       with no rule-based judge, plus a severity-weighted risk score and
       per-category breakdown (`redteam/scoring.py`).
-- [ ] **Phase 6** — HTML/Markdown report generator.
+- [x] **Phase 6** — HTML/Markdown report generator (`redteam/report.py`):
+      executive summary, OWASP category breakdown, top findings with
+      remediation guidance, full findings table. `redteam report` renders
+      any saved run.
 - [ ] Stretch — CI integration, dashboard.
 
 ## The demo vulnerable app (`vulnapp/`)
@@ -76,6 +79,8 @@ redteam run --llm-judge                                 # also score judge-less 
 redteam mutate                                          # regenerate data/attacks/generated/mutated.yaml
 redteam mutate --techniques b64,split --category LLM06  # scope mutators/seeds
 redteam mutate --llm --techniques paraphrase            # LLM-paraphrased variants (needs ANTHROPIC_API_KEY)
+redteam report                                          # render the most recent run as HTML
+redteam report data/runs/<timestamp>.json --fmt md      # render a specific run as Markdown
 ```
 
 `run` requires the target app to be up (`uvicorn vulnapp.app:app`) and a real
@@ -133,3 +138,19 @@ Every mutator and both judge types only ever change how an attack is
 *delivered* or how its result is *scored* — never both at once for the same
 concern — which is what let Phases 3–5 be added without reworking anything
 from Phases 1–2.
+
+## Report generator (`redteam/report.py`)
+
+`redteam report [run_file] [--fmt html|md]` turns a saved run into a
+shareable document: summary cards (risk score, grade, vulnerable/total,
+manual review count), the OWASP category breakdown, a detail section per top
+finding (transcript + category-specific remediation from `REMEDIATIONS`),
+and the full findings table. With no `run_file` it picks the most recent
+file under `data/runs/`.
+
+The HTML renderer escapes every piece of transcript/notes text before
+interpolating it (`html.escape`, never raw f-string substitution) — several
+of the harness's own attacks (the LLM05 corpus) intentionally get the target
+to emit literal `<script>` tags, so the report has to render those as inert
+text or it would become exploitable the moment someone opened it. That
+property is pinned by `tests/test_report.py`, not just asserted in a comment.
