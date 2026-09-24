@@ -20,7 +20,9 @@ Phased build — see below for what's done vs. planned.
       obfuscated/multi-turn variants of the seed corpus automatically —
       117 generated from the 32 hand-written seeds, committed under
       `data/attacks/generated/mutated.yaml`.
-- [ ] **Phase 5** — LLM-as-judge scoring + severity model.
+- [x] **Phase 5** — LLM-as-judge fallback (`redteam/llm_judge.py`) for attacks
+      with no rule-based judge, plus a severity-weighted risk score and
+      per-category breakdown (`redteam/scoring.py`).
 - [ ] **Phase 6** — HTML/Markdown report generator.
 - [ ] Stretch — CI integration, dashboard.
 
@@ -70,6 +72,7 @@ redteam list-attacks                                   # prints the full corpus 
 redteam run --target-url http://127.0.0.1:8000         # run everything against a live target
 redteam run --category LLM06                           # scope to one OWASP category
 redteam run --no-save                                  # skip writing data/runs/<timestamp>.json
+redteam run --llm-judge                                 # also score judge-less attacks via LLM-as-judge
 redteam mutate                                          # regenerate data/attacks/generated/mutated.yaml
 redteam mutate --techniques b64,split --category LLM06  # scope mutators/seeds
 redteam mutate --llm --techniques paraphrase            # LLM-paraphrased variants (needs ANTHROPIC_API_KEY)
@@ -81,8 +84,9 @@ target's `/debug/state` before each attack, drives the full payload (multi-turn
 attacks replay every turn in one session), and scores the result with a
 rule-based judge — see `redteam/judges.py` for how each `judge.type` in the
 attack YAML is interpreted. Attacks with no `judge` block (e.g. `spl-002`,
-`uc-003`) are inherently fuzzy to score with a substring/threshold check and
-are left for manual review / a future LLM-as-judge (Phase 5).
+`uc-003`) are inherently fuzzy to score with a substring/threshold check;
+pass `--llm-judge` to score those with Claude instead (see below), or leave
+it off to flag them `manual_review: true` in the output.
 
 The `/debug/state` and `/debug/reset` endpoints on `vulnapp` are test
 instrumentation, not something a real black-box target would expose — they
@@ -107,3 +111,25 @@ every mutator is judge-agnostic and composes freely:
 
 `redteam mutate` skips attacks already tagged `mutated`, so re-running it
 doesn't compound mutations on top of mutations.
+
+## LLM-as-judge and risk scoring (Phase 5)
+
+`redteam/llm_judge.py` handles attacks with no rule-based `judge` (currently
+`spl-002` and `uc-003`) by handing the full transcript and the attack's
+`success_criteria` to Claude, forcing a `submit_verdict` tool call so the
+output is always a structured `{vulnerable, rationale}` pair rather than
+free text to parse. It's opt-in via `redteam run --llm-judge` since it costs
+API calls; without the flag those attacks are reported as
+`manual_review: true` instead of guessed at.
+
+`redteam/scoring.py` rolls a run's findings into a `RiskReport`: a
+severity-weighted score from 0 (nothing vulnerable) to 100 (everything
+vulnerable, weighted so a critical finding counts far more than a low one),
+a letter grade (A–F), a per-OWASP-category breakdown, and the top findings by
+severity. It's printed after every `redteam run` and saved alongside the raw
+findings in `data/runs/<timestamp>.json`.
+
+Every mutator and both judge types only ever change how an attack is
+*delivered* or how its result is *scored* — never both at once for the same
+concern — which is what let Phases 3–5 be added without reworking anything
+from Phases 1–2.

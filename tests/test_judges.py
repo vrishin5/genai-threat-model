@@ -82,4 +82,5 @@ def test_no_judge_flags_manual_review():
     attack = Attack(**BASE_KWARGS, judge=None)
     finding = evaluate(attack, [], "anything", None)
     assert not finding.vulnerable
+    assert finding.manual_review is True
     assert "manual review" in finding.notes.lower()

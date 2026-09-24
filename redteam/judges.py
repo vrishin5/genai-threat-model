@@ -71,8 +71,10 @@ def evaluate(
             category=attack.category,
             severity=attack.severity,
             vulnerable=False,
+            manual_review=True,
             transcript=transcript,
-            notes="No automated judge defined for this attack — needs manual review.",
+            notes="No automated judge defined for this attack — needs manual review "
+            "(or run with --llm-judge to use the LLM-as-judge fallback).",
         )
 
     if spec.type == JudgeType.CANARY_LEAK:

@@ -95,8 +95,8 @@ class Attack(BaseModel):
     prompt or an ordered list of turns for multi-turn attacks. `success_criteria`
     is the human-readable description a report shows; `judge` is the
     machine-checkable version the execution engine actually scores against.
-    An attack with no `judge` is flagged for manual review instead of being
-    auto-scored.
+    An attack with no `judge` falls back to the LLM-as-judge (redteam/llm_judge.py)
+    when one is enabled, or is flagged for manual review otherwise.
     """
 
     id: str
@@ -117,6 +117,7 @@ class Finding(BaseModel):
     category: Category
     severity: Severity
     vulnerable: bool
+    manual_review: bool = False
     transcript: list[dict] = Field(default_factory=list)
     notes: Optional[str] = None
 

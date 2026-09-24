@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import uuid
+from typing import Optional
 
 from redteam.adapters.base import TargetAdapter
 from redteam.judges import evaluate
+from redteam.llm_judge import llm_evaluate
 from redteam.schema import Attack, Channel, Finding, RunResult
 
 
-def run_attack(adapter: TargetAdapter, attack: Attack) -> Finding:
+def run_attack(adapter: TargetAdapter, attack: Attack, llm_judge_client: Optional[object] = None) -> Finding:
     """Replay one attack's turns against the target and score the result.
 
     Each attack gets a fresh session id and, when the target supports it, a
@@ -35,12 +37,23 @@ def run_attack(adapter: TargetAdapter, attack: Attack) -> Finding:
         transcript.append({"role": "target", "content": response})
         final_response = response
 
+    # An attack with no rule-based judge falls back to the LLM-as-judge when
+    # one's enabled; otherwise `evaluate` itself returns a manual-review
+    # Finding (see redteam/judges.py) — either way this call is exhaustive.
+    if attack.judge is None and llm_judge_client is not None:
+        return llm_evaluate(attack, transcript, llm_judge_client)
+
     debug_state = adapter.get_debug_state() if hasattr(adapter, "get_debug_state") else None
     return evaluate(attack, transcript, final_response, debug_state)
 
 
-def run_corpus(adapter: TargetAdapter, attacks: list[Attack], target_name: str) -> RunResult:
+def run_corpus(
+    adapter: TargetAdapter,
+    attacks: list[Attack],
+    target_name: str,
+    llm_judge_client: Optional[object] = None,
+) -> RunResult:
     result = RunResult(target_name=target_name)
     for attack in attacks:
-        result.findings.append(run_attack(adapter, attack))
+        result.findings.append(run_attack(adapter, attack, llm_judge_client=llm_judge_client))
     return result

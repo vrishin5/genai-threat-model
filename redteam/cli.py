@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -12,6 +13,7 @@ from redteam.adapters.http_adapter import HTTPTargetAdapter
 from redteam.engine import run_corpus
 from redteam.mutators import generate_mutations
 from redteam.schema import Attack
+from redteam.scoring import score_run
 
 app = typer.Typer(help="Automated red-teaming harness for GenAI applications.")
 console = Console()
@@ -79,6 +81,11 @@ def run(
     save: bool = typer.Option(
         True, help="Save the full run (with transcripts) as JSON under data/runs/."
     ),
+    llm_judge: bool = typer.Option(
+        False,
+        "--llm-judge/--no-llm-judge",
+        help="Score attacks with no rule-based judge using an LLM-as-judge (needs ANTHROPIC_API_KEY).",
+    ),
 ) -> None:
     """Run the attack corpus against a target and report vulnerable findings."""
     attacks = _load_attacks()
@@ -88,9 +95,15 @@ def run(
         console.print("No attacks match — nothing to run.")
         raise typer.Exit()
 
+    judge_client = None
+    if llm_judge:
+        import anthropic
+
+        judge_client = anthropic.Anthropic()
+
     adapter = HTTPTargetAdapter(base_url=target_url)
     with console.status(f"Running {len(attacks)} attacks against {target_url}..."):
-        result = run_corpus(adapter, attacks, target_name=target_url)
+        result = run_corpus(adapter, attacks, target_name=target_url, llm_judge_client=judge_client)
     adapter.close()
 
     table = Table(
@@ -113,11 +126,31 @@ def run(
         )
     console.print(table)
 
+    report = score_run(result)
+    risk_table = Table(title=f"Risk score: {report.risk_score}/100 (grade {report.grade})")
+    risk_table.add_column("Category")
+    risk_table.add_column("Vulnerable / Total")
+    risk_table.add_column("Manual review")
+    risk_table.add_column("Category score")
+    for cb in report.by_category:
+        risk_table.add_row(
+            cb.category.value,
+            f"{cb.vulnerable}/{cb.total}",
+            str(cb.manual_review),
+            f"{cb.score}/100",
+        )
+    console.print(risk_table)
+
     if save:
         RUNS_DIR.mkdir(parents=True, exist_ok=True)
         out_path = RUNS_DIR / f"{result.started_at.strftime('%Y%m%dT%H%M%SZ')}.json"
-        out_path.write_text(result.model_dump_json(indent=2))
-        console.print(f"Full run (with transcripts) saved to {out_path}")
+        out_path.write_text(
+            json.dumps(
+                {"result": result.model_dump(mode="json"), "risk_report": report.model_dump(mode="json")},
+                indent=2,
+            )
+        )
+        console.print(f"Full run (with transcripts) and risk report saved to {out_path}")
 
 
 @app.command()
