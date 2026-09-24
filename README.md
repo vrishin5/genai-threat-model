@@ -11,7 +11,8 @@ Phased build — see below for what's done vs. planned.
 - [x] **Phase 0** — repo scaffolding, attack schema (`redteam/schema.py`), CLI skeleton (`redteam/cli.py`).
 - [x] **Phase 1** — demo vulnerable target app (`vulnapp/`): a RAG + tool-calling
       support bot with four intentional vulnerabilities to attack.
-- [ ] **Phase 2** — attack corpus (`data/attacks/*.yaml`).
+- [x] **Phase 2** — attack corpus (`data/attacks/*.yaml`): 32 attacks across
+      LLM01, LLM02, LLM05, LLM06, LLM07, LLM10.
 - [ ] **Phase 3** — execution engine + canary/rule-based judge.
 - [ ] **Phase 4** — mutation/fuzzing layer.
 - [ ] **Phase 5** — LLM-as-judge scoring + severity model.
@@ -60,6 +61,6 @@ or open `http://127.0.0.1:8000/docs` for the interactive API.
 
 ```bash
 redteam version
-redteam list-attacks   # empty until Phase 2
+redteam list-attacks   # prints the 32-attack corpus
 redteam run --target-url http://127.0.0.1:8000   # stubbed until Phase 3
 ```
