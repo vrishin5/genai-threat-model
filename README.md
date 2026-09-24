@@ -13,7 +13,9 @@ Phased build — see below for what's done vs. planned.
       support bot with four intentional vulnerabilities to attack.
 - [x] **Phase 2** — attack corpus (`data/attacks/*.yaml`): 32 attacks across
       LLM01, LLM02, LLM05, LLM06, LLM07, LLM10.
-- [ ] **Phase 3** — execution engine + canary/rule-based judge.
+- [x] **Phase 3** — execution engine (`redteam/engine.py`) + rule-based judges
+      (`redteam/judges.py`): canary-leak, text-match, unescaped-HTML, and
+      tool-call/ledger checks. `redteam run` is fully wired up.
 - [ ] **Phase 4** — mutation/fuzzing layer.
 - [ ] **Phase 5** — LLM-as-judge scoring + severity model.
 - [ ] **Phase 6** — HTML/Markdown report generator.
@@ -61,6 +63,23 @@ or open `http://127.0.0.1:8000/docs` for the interactive API.
 
 ```bash
 redteam version
-redteam list-attacks   # prints the 32-attack corpus
-redteam run --target-url http://127.0.0.1:8000   # stubbed until Phase 3
+redteam list-attacks                                   # prints the 32-attack corpus
+redteam run --target-url http://127.0.0.1:8000         # run everything against a live target
+redteam run --category LLM06                           # scope to one OWASP category
+redteam run --no-save                                  # skip writing data/runs/<timestamp>.json
 ```
+
+`run` requires the target app to be up (`uvicorn vulnapp.app:app`) and a real
+`ANTHROPIC_API_KEY` in `.env`, since the demo app calls Claude. It resets the
+target's `/debug/state` before each attack, drives the full payload (multi-turn
+attacks replay every turn in one session), and scores the result with a
+rule-based judge — see `redteam/judges.py` for how each `judge.type` in the
+attack YAML is interpreted. Attacks with no `judge` block (e.g. `spl-002`,
+`uc-003`) are inherently fuzzy to score with a substring/threshold check and
+are left for manual review / a future LLM-as-judge (Phase 5).
+
+The `/debug/state` and `/debug/reset` endpoints on `vulnapp` are test
+instrumentation, not something a real black-box target would expose — they
+give the judges ground truth on what tools actually ran (refund ledger, sent
+emails, tool-call counts) instead of trusting the model's own summary of its
+actions.

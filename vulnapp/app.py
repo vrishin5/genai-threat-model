@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from vulnapp.agent import chat
+from vulnapp.tools import refund_ledger, reset_state, sent_emails, tool_call_counts
 
 app = FastAPI(title="Acme Support Bot (intentionally vulnerable demo)")
 
@@ -50,3 +51,23 @@ def chat_ui(message: str, session_id: Optional[str] = None) -> str:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.get("/debug/state")
+def debug_state() -> dict:
+    """Test instrumentation for the red-team harness's judges — a real
+    black-box target wouldn't expose this. It gives ground truth on what
+    tools actually ran, instead of trusting the model's own summary of its
+    actions.
+    """
+    return {
+        "refunds": refund_ledger,
+        "emails": sent_emails,
+        "tool_call_counts": tool_call_counts,
+    }
+
+
+@app.post("/debug/reset")
+def debug_reset() -> dict:
+    reset_state()
+    return {"status": "reset"}
