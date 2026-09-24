@@ -10,20 +10,27 @@ from rich.table import Table
 
 from redteam.adapters.http_adapter import HTTPTargetAdapter
 from redteam.engine import run_corpus
+from redteam.mutators import generate_mutations
 from redteam.schema import Attack
 
 app = typer.Typer(help="Automated red-teaming harness for GenAI applications.")
 console = Console()
 
 ATTACKS_DIR = Path(__file__).resolve().parent.parent / "data" / "attacks"
+GENERATED_DIR = ATTACKS_DIR / "generated"
 RUNS_DIR = Path(__file__).resolve().parent.parent / "data" / "runs"
 
 
 def _load_attacks() -> list[Attack]:
+    """Loads both hand-written attacks (data/attacks/*.yaml) and any
+    mutator-generated ones (data/attacks/generated/*.yaml, from `redteam
+    mutate`) — they're both just Attack YAML, so the runner doesn't care
+    which produced them.
+    """
     attacks: list[Attack] = []
-    for path in sorted(ATTACKS_DIR.glob("*.yaml")):
+    for path in sorted(ATTACKS_DIR.rglob("*.yaml")):
         raw = yaml.safe_load(path.read_text())
-        for entry in raw.get("attacks", []):
+        for entry in (raw or {}).get("attacks", []):
             attacks.append(Attack.model_validate(entry))
     return attacks
 
@@ -31,7 +38,7 @@ def _load_attacks() -> list[Attack]:
 @app.command()
 def version() -> None:
     """Print the harness version."""
-    console.print("genai-threat-model redteam harness — v0.1.0 (Phase 0/1 scaffold)")
+    console.print("genai-threat-model redteam harness — v0.1.0 (through Phase 4: mutation/fuzzing)")
 
 
 @app.command("list-attacks")
@@ -111,6 +118,61 @@ def run(
         out_path = RUNS_DIR / f"{result.started_at.strftime('%Y%m%dT%H%M%SZ')}.json"
         out_path.write_text(result.model_dump_json(indent=2))
         console.print(f"Full run (with transcripts) saved to {out_path}")
+
+
+@app.command()
+def mutate(
+    techniques: str = typer.Option(
+        "b64,homoglyph,leetspeak,split",
+        help="Comma-separated mutators to run: b64, homoglyph, leetspeak, split, paraphrase.",
+    ),
+    category: Optional[str] = typer.Option(
+        None, help="Only mutate seed attacks in this OWASP category, e.g. LLM06."
+    ),
+    out: Path = typer.Option(
+        GENERATED_DIR / "mutated.yaml", help="Where to write the generated attacks."
+    ),
+    llm: bool = typer.Option(
+        False,
+        "--llm/--no-llm",
+        help="Enable the 'paraphrase' mutator, which calls Claude (needs ANTHROPIC_API_KEY).",
+    ),
+) -> None:
+    """Generate obfuscated/rephrased variants of the seed attack corpus.
+
+    The deterministic mutators (b64, homoglyph, leetspeak, split) are free
+    and always available. 'paraphrase' additionally rewrites the payload
+    with an LLM call and is skipped unless --llm is passed.
+    """
+    seeds = [a for a in _load_attacks() if "mutated" not in a.tags]
+    if category:
+        seeds = [a for a in seeds if a.category.value.lower() == category.lower()]
+    if not seeds:
+        console.print("No seed attacks match — nothing to mutate.")
+        raise typer.Exit()
+
+    names = [t.strip() for t in techniques.split(",") if t.strip()]
+    client = None
+    if "paraphrase" in names:
+        if not llm:
+            console.print(
+                "[yellow]Skipping 'paraphrase' — pass --llm to enable it.[/yellow]"
+            )
+            names = [n for n in names if n != "paraphrase"]
+        else:
+            import anthropic
+
+            client = anthropic.Anthropic()
+
+    mutated = generate_mutations(seeds, names, client=client)
+    if not mutated:
+        console.print("No mutations were generated.")
+        raise typer.Exit()
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"attacks": [attack.model_dump(mode="json") for attack in mutated]}
+    out.write_text(yaml.safe_dump(payload, sort_keys=False, allow_unicode=True))
+    console.print(f"Wrote {len(mutated)} mutated attacks (from {len(seeds)} seeds) to {out}")
 
 
 if __name__ == "__main__":

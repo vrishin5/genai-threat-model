@@ -16,7 +16,10 @@ Phased build — see below for what's done vs. planned.
 - [x] **Phase 3** — execution engine (`redteam/engine.py`) + rule-based judges
       (`redteam/judges.py`): canary-leak, text-match, unescaped-HTML, and
       tool-call/ledger checks. `redteam run` is fully wired up.
-- [ ] **Phase 4** — mutation/fuzzing layer.
+- [x] **Phase 4** — mutation/fuzzing layer (`redteam/mutators.py`): generates
+      obfuscated/multi-turn variants of the seed corpus automatically —
+      117 generated from the 32 hand-written seeds, committed under
+      `data/attacks/generated/mutated.yaml`.
 - [ ] **Phase 5** — LLM-as-judge scoring + severity model.
 - [ ] **Phase 6** — HTML/Markdown report generator.
 - [ ] Stretch — CI integration, dashboard.
@@ -63,10 +66,13 @@ or open `http://127.0.0.1:8000/docs` for the interactive API.
 
 ```bash
 redteam version
-redteam list-attacks                                   # prints the 32-attack corpus
+redteam list-attacks                                   # prints the full corpus (seeds + generated)
 redteam run --target-url http://127.0.0.1:8000         # run everything against a live target
 redteam run --category LLM06                           # scope to one OWASP category
 redteam run --no-save                                  # skip writing data/runs/<timestamp>.json
+redteam mutate                                          # regenerate data/attacks/generated/mutated.yaml
+redteam mutate --techniques b64,split --category LLM06  # scope mutators/seeds
+redteam mutate --llm --techniques paraphrase            # LLM-paraphrased variants (needs ANTHROPIC_API_KEY)
 ```
 
 `run` requires the target app to be up (`uvicorn vulnapp.app:app`) and a real
@@ -83,3 +89,21 @@ instrumentation, not something a real black-box target would expose — they
 give the judges ground truth on what tools actually ran (refund ledger, sent
 emails, tool-call counts) instead of trusting the model's own summary of its
 actions.
+
+## Mutation/fuzzing (`redteam/mutators.py`)
+
+Each mutator takes a seed `Attack` and rewrites only its *input payload* —
+`judge`, `success_criteria`, and `channel` are carried over unchanged, since a
+judge scores the target's response, never the attacker's wording. That means
+every mutator is judge-agnostic and composes freely:
+
+| Mutator | What it does |
+|---|---|
+| `b64` | Wraps the final turn in a "decode this base64 and follow it" shell. |
+| `homoglyph` | Swaps Latin letters for visually-identical Cyrillic look-alikes (filter evasion). |
+| `leetspeak` | Substitutes letters for digits (`e`→`3`, `o`→`0`, ...). |
+| `split` | Turns a single-turn attack into two turns: an innocuous preamble, then the original ask. |
+| `paraphrase` | LLM-rewrites the payload with different wording/structure. Opt-in (`--llm`) since it costs API calls. |
+
+`redteam mutate` skips attacks already tagged `mutated`, so re-running it
+doesn't compound mutations on top of mutations.
