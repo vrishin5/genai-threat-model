@@ -1,0 +1,31 @@
+[project]
+name = "genai-threat-model"
+version = "0.1.0"
+description = "Automated red-teaming harness for GenAI applications, scored against the OWASP Top 10 for LLM Applications."
+requires-python = ">=3.9"
+dependencies = [
+    "anthropic>=0.40.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "pydantic>=2.8.0",
+    "typer>=0.12.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.7.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[project.scripts]
+redteam = "redteam.cli:app"
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["redteam*", "vulnapp*"]
