@@ -5,28 +5,6 @@ running (black-box) LLM app with adversarial prompts and scores its
 behavior against the [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/).
 
 ## Status
-
-Phased build — see below for what's done vs. planned.
-
-- [x] **Phase 0** — repo scaffolding, attack schema (`redteam/schema.py`), CLI skeleton (`redteam/cli.py`).
-- [x] **Phase 1** — demo vulnerable target app (`vulnapp/`): a RAG + tool-calling
-      support bot with four intentional vulnerabilities to attack.
-- [x] **Phase 2** — attack corpus (`data/attacks/*.yaml`): 32 attacks across
-      LLM01, LLM02, LLM05, LLM06, LLM07, LLM10.
-- [x] **Phase 3** — execution engine (`redteam/engine.py`) + rule-based judges
-      (`redteam/judges.py`): canary-leak, text-match, unescaped-HTML, and
-      tool-call/ledger checks. `redteam run` is fully wired up.
-- [x] **Phase 4** — mutation/fuzzing layer (`redteam/mutators.py`): generates
-      obfuscated/multi-turn variants of the seed corpus automatically —
-      117 generated from the 32 hand-written seeds, committed under
-      `data/attacks/generated/mutated.yaml`.
-- [x] **Phase 5** — LLM-as-judge fallback (`redteam/llm_judge.py`) for attacks
-      with no rule-based judge, plus a severity-weighted risk score and
-      per-category breakdown (`redteam/scoring.py`).
-- [x] **Phase 6** — HTML/Markdown report generator (`redteam/report.py`):
-      executive summary, OWASP category breakdown, top findings with
-      remediation guidance, full findings table. `redteam report` renders
-      any saved run.
 - [ ] Stretch — CI integration, dashboard.
 
 ## The demo vulnerable app (`vulnapp/`)
